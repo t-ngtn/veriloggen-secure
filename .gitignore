@@ -2,6 +2,9 @@
 *.pyc
 *.out
 parsetab.py
+tmp.v
+*.vcd
+.DS_Store
 
 # ---- gitignore for python ----
 # Byte-compiled / optimized / DLL files
