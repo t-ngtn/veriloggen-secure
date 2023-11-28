@@ -54,6 +54,9 @@ from .stream import reset as stream_reset
 from .thread import reset as thread_reset
 from .types import reset as types_reset
 
+# Security Modules
+from .security.sha256 import SHA256Stream 
+
 
 def reset():
     seq_reset()
