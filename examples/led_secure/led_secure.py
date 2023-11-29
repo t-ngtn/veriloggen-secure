@@ -15,6 +15,8 @@ import veriloggen.types.axi as axi
 axi_datawidth = 512
 datawidth = 32
 
+num = 32
+
 a_offset = 0
 
 def mkLed():
@@ -25,24 +27,24 @@ def mkLed():
     addrwidth = 4
     ram_a = vthread.RAM(m, 'ram_a', clk, rst, datawidth, addrwidth)
 
-    maxi = vthread.AXIMSecure(m, 'maxi', clk, rst, datawidth, global_max_addr= 64)
+    maxi = vthread.AXIMSecure(m, 'maxi', clk, rst, datawidth, global_max_addr= (num + 1)* 4 - 1 ) 
 
     def count():
         a_addr = a_offset
-        for i in range(16):
+        for i in range(num):
             ram_a.write(i, i)
-            maxi.dma_write(ram_a, i, a_addr, 1)
+            maxi.dma_write_secure(ram_a, i, a_addr, 1)
             a_addr += 4
 
         a_addr = a_offset
         sum = 0
-        for i in range(16):
-            maxi.dma_read(ram_a, i, a_addr, 1)
+        for i in range(num):
+            maxi.dma_read_secure(ram_a, i, a_addr, 1)
             sum = sum + ram_a.read(i)
             a_addr += 4
         
         ram_a.write(0, sum)
-        maxi.dma_write(ram_a, 0, 64, 1)
+        maxi.dma_write_secure(ram_a, 0, num * 4, 1)
 
     th = vthread.Thread(m, 'th_count', clk, rst, count)
     fsm = th.start()

@@ -55,7 +55,7 @@ from .thread import reset as thread_reset
 from .types import reset as types_reset
 
 # Security Modules
-from .security.sha256 import SHA256Stream 
+from .security.hmac_sha256 import HmacSha256
 
 
 def reset():
