@@ -87,12 +87,8 @@ class AXIMSecure(AXIM):
 
         self.dma_wait_write(fsm)
     
-    def _verify(self, fsm: FSM, ram, local_addr, global_addr, local_size):
-        print("global_max_addr: ", self.global_max_addr)
-        print("hight: ", self.hight)
-        print("tree_start_addr: ", self.tree_start_addr)
-        
-        # read data block
+    def _verify(self, fsm: FSM, ram, local_addr, global_addr, local_size):        
+        # read data block, limit ram.datawidth = 32 and local_size = 1
         self.dma_read(fsm, self.data_ram, 0, (global_addr // 128) * 128, 2)
         data1 = self.data_ram.read(fsm, 0)
         data2 = self.data_ram.read(fsm, 1)
@@ -128,16 +124,11 @@ class AXIMSecure(AXIM):
         data1 = self.data_ram.read(fsm, 1)
         
         fsm.If(zero_or_one == 0)(
-            self.input_data0((data0 & ((0x00000000 << (7 - inner_idx)) | data << (7 - inner_idx)) << (1 - block_idx)))
-        ).Else(
-            self.input_data0(data0)
-        )
-        fsm.goto_next()
-
-        fsm.If(zero_or_one == 1)(
-            self.input_data1((data1 & ((0x00000000 << (7 - inner_idx)) | data << (7 - inner_idx)) << (1 - block_idx)))
-        ).Else(
+            self.input_data0((data0 & ((0x00000000 << (7 - inner_idx)) | data << (7 - inner_idx))) << (1 - block_idx)),
             self.input_data1(data1)
+        ).Else(
+            self.input_data0(data0),
+            self.input_data1((data1 & ((0x00000000 << (7 - inner_idx)) | data << (7 - inner_idx))) << (1 - block_idx))
         )
         fsm.goto_next()
 
