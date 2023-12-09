@@ -23,7 +23,7 @@ def mkHmacSha256():
     digest = m.Reg('digest', 256)
     
     def hash():
-        hmac_sha256.input_data(data=INPUT_VALUE, is_first=True, is_last=True)
+        hmac_sha256.input_data(data=INPUT_VALUE, address=1000, cnt=0,  is_first=True, is_last=True)
         hmac_sha256.wait(digest=digest)
     
     
@@ -49,7 +49,7 @@ def mkTest():
     init = simulation.setup_reset(m, rst, m.make_reset(), period=100)
 
     init.add(
-        Delay(3000),
+        Delay(10000),
         Systask('finish'),
     )
 
