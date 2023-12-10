@@ -58,14 +58,14 @@ class HmacSha256(object):
         sha256_stream = StubModule('sha256_stream', sha256_combined_v)
         self.m.Instance(sha256_stream, 'sha256_stream', [], ports=ports)
     
-    def input_data(self, fsm: FSM, data, address, cnt, is_first, is_last):
+    def input_data(self, fsm: FSM, data, address, cnt, with_key, is_last):
         '''
         data: 512 bits
         sk: max 128bits
         address: max 64 bits
         cnt: max 64 bits
         '''
-        if is_first:
+        if with_key:
             # Add meta data to the beginning of the data
             fsm(
                 self.s_tvalid_i(1),
