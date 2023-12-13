@@ -23,7 +23,7 @@ def mkHmacSha256():
     digest = m.Reg('digest', 256)
     
     def hash():
-        hmac_sha256.input_data(data=INPUT_VALUE, address=1000, cnt=0,  with_key=True, is_last=True)
+        hmac_sha256.input_data(data=INPUT_VALUE, with_key=True, is_last=True)
         hmac_sha256.wait(digest=digest)
     
     
