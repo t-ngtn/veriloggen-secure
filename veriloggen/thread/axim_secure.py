@@ -8,19 +8,20 @@ import veriloggen.thread as vthread
 import veriloggen.types.axi as axi
 from veriloggen.thread.axi import AXIM
 from veriloggen.security.hmac_sha256 import HmacSha256
+from veriloggen.security.hmac_sha256_debug import HmacSha256Debug
 from .ram import RAM
 
 
-DATA_BLOCK_BYTE_SIZE = 64
+DATA_BLOCK_BYTE_SIZE = 32
 DATA_BLOCK_BIT_SIZE = DATA_BLOCK_BYTE_SIZE * 8
 HASH_BYTE_SIZE = 32
 HASH_BIT_SIZE = HASH_BYTE_SIZE * 8
-SEP = DATA_BLOCK_BYTE_SIZE // HASH_BYTE_SIZE
+SEP = 2
 
 class AXIMSecure(AXIM):
     """ AXI Master Interface with DMA controller Integrity Tree """ 
     
-    __intrinsics__ = ('dma_read_secure', 'dma_write_secure', 'init')
+    __intrinsics__ = ('dma_read_secure', 'dma_write_secure', 'init', "dma_read", "dma_write")
     
     def __init__(self, m, name, clk, rst, datawidth=32, addrwidth=32,
                  waddr_id_width=0, wdata_id_width=0, wresp_id_width=0,
@@ -56,32 +57,32 @@ class AXIMSecure(AXIM):
                         fsm_as_module)
         
         self.block_bit_width = datawidth
-        
         self.sk = sk
         self.global_max_addr = global_max_addr
         self.max_ram_byte_size = max_ram_byte_size
         self.tmp_ram = RAM(self.m, 'tmp_ram', self.clk, self.rst, datawidth=DATA_BLOCK_BIT_SIZE, addrwidth=(_align_block_ceil(self.max_ram_byte_size * 8, DATA_BLOCK_BIT_SIZE)).bit_length())
-        
-        self.data_end_addr = _align_block_ceil(self.global_max_addr + 1, DATA_BLOCK_BYTE_SIZE) - 1
+
+        self.data_end_addr = _next_power_of_2((self.global_max_addr + 1) // DATA_BLOCK_BYTE_SIZE) * DATA_BLOCK_BYTE_SIZE - 1
         self.total_block_cnt = (self.data_end_addr + 1) // DATA_BLOCK_BYTE_SIZE 
         self.mac_begin_addr = self.data_end_addr + 1
         self.root_addr = self.mac_begin_addr  # the root is stored ad the begin of the mac region
         self.mac_tree_height = _calc_height_from_leaf_num(self.total_block_cnt)
         self.total_mac_block_cnt = _calc_nodes_from_height(self.mac_tree_height)
         self.mac_begin_idx = SEP ** self.mac_tree_height - 1
-        
         self.hmac_sha256 = HmacSha256(m, "hmac_sha256", self.clk, self.rst, self.sk)
         
         # for verify & update
         self.data_ram = RAM(self.m, 'data_ram', self.clk, self.rst, datawidth=DATA_BLOCK_BIT_SIZE, addrwidth=1)
-        self.mac_ram = RAM(self.m, 'mac_ram', self.clk, self.rst, datawidth=HASH_BIT_SIZE, addrwidth=int(math.log2(self.mac_tree_height)) + 1)
+        self.mac_ram = RAM(self.m, 'mac_ram', self.clk, self.rst, datawidth=HASH_BIT_SIZE, addrwidth=_calc_mac_ram_size(self.mac_tree_height))
         self.calc_mac_ram = RAM(self.m, 'calc_mac_ram', self.clk, self.rst, datawidth=HASH_BIT_SIZE, addrwidth=1)
         self.root: Reg = self.m.Reg('root', HASH_BIT_SIZE)
         self.hash_calc_reg: Reg = self.m.Reg('hash_calc_reg', HASH_BIT_SIZE)
-        self.hidx: Reg = self.m.Reg('hidx', self.total_mac_block_cnt.bit_length())
+        self.hidx: Reg = self.m.Reg('hidx', self.total_mac_block_cnt.bit_length(), initval=0)
         self.is_secure: Reg = self.m.Reg('is_secure', initval=1)
         
-        self.print_info()
+        self.i = self.m.Reg('i', 32, initval=0)
+        
+        # self.print_info()
         
     def print_info(self):
         print("global_max_addr: ", self.global_max_addr)
@@ -99,27 +100,24 @@ class AXIMSecure(AXIM):
         
         # dma_read_to_tmp
         begin_data_addr, begin_data_idx, end_data_addr, end_data_idx, data_block_size = self.read_to_tmp(fsm, self.tmp_ram, global_addr, local_size)
-        print("local_size: ", local_size)
-        print("data_block_size: ", data_block_size)
-                
-        # verify
-        # for i in range(data_block_size):
-        #     self._verify_one_block(fsm, i)
-        # を示すようなfsmが以下
         
+        fsm(self.i(0))
+        fsm.goto_next()
         begin_state = fsm.current
-        i: Reg = self.m.Reg('i', 32, initval=0)
-        self._verify_one_block(fsm, i)
-        fsm.add(i.inc())
+        
+        self._verify_one_block(fsm, begin_data_idx, self.i)
+        fsm.add(self.i.inc())
+        fsm.goto_next()
+        
         end_state = fsm.current
-        fsm.If(i < data_block_size ).goto_from(end_state, begin_state)
-        fsm.If(i == data_block_size)(
-            i(0)
+        fsm.If(self.i < data_block_size ).goto_from(end_state, begin_state)
+        fsm.If(self.i == data_block_size)(
+            self.i(0)
         )
-        fsm.If(i == data_block_size).goto_next()
+        fsm.If(self.i == data_block_size).goto_next()
             
         # copy
-        # tmp -> ram (ram width == datawidth)
+        # tmp -> ram (現状 ram width == datawidth のみ)
         vthread.copy(fsm, self.tmp_ram, ram, 0, local_addr, data_block_size)
         
         
@@ -127,80 +125,102 @@ class AXIMSecure(AXIM):
                          local_stride=1, port=0):
         
         begin_data_addr, begin_data_idx, end_data_addr, end_data_idx, data_block_size = self.read_to_tmp(fsm, self.tmp_ram, global_addr, local_size)
-        print("local_size: ", local_size)
-        print("data_block_size: ", data_block_size)
+        
+        fsm(self.i(0))
+        fsm.goto_next()
         
         begin_state = fsm.current
-        i = self.m.Reg('i', 32, initval=0)
         
-        self._verify_one_block(fsm, i)
-        self._update(fsm, ram, begin_data_addr, local_addr, i)
+        self._verify_one_block(fsm, begin_data_idx, self.i)
+        self._update(fsm, ram, begin_data_addr, local_addr, begin_data_idx, self.i)
         
-        fsm(i.inc())
+        fsm(self.i.inc())
+        fsm.goto_next()
+        
         end_state = fsm.current
-        fsm.If(i < data_block_size).goto_from(end_state, begin_state)
-        fsm.If(i == data_block_size)(
-            i(0)
+        fsm.If(self.i < data_block_size).goto_from(end_state, begin_state)
+        fsm.If(self.i == data_block_size)(
+            self.i(0)
         )
-        fsm.If(i == data_block_size).goto_next()
+        fsm.If(self.i == data_block_size).goto_next()
     
-    def _verify_one_block(self, fsm: FSM, idx):
+    def _verify_one_block(self, fsm: FSM, begin_data_idx, idx):
         data = self.tmp_ram.read(fsm, idx)
-        self.hmac_sha256.input_data(fsm, data, with_key=True, is_last=True)
+        self.hmac_sha256.input_data(fsm, _implement0(data), with_key=True, is_last=True)
         self.hmac_sha256.wait(fsm, self.hash_calc_reg)
         
-        hidx = self.mac_begin_idx + idx
+        hidx = self.mac_begin_idx + begin_data_idx + idx
         
-        for i in range(self.mac_tree_height):            
-            if hidx % 2 == 0:
-                hidx -= 1
-            else:
-                hidx += 1
-            
-            self.dma_read(fsm, self.mac_ram, i, self.root_addr + hidx * HASH_BYTE_SIZE, 1)
-            hash_tmp = self.mac_ram.read(fsm, i)
-            
-            if hidx % 2 == 0:
-                self.hmac_sha256.input_data(fsm, hash_tmp, with_key=False, is_last=False)
-                self.hmac_sha256.input_data(fsm, self.hash_calc_reg, with_key=False, is_last=True)
-            else:
-                self.hmac_sha256.input_data(fsm, self.hash_calc_reg, with_key=False, is_last=False)
-                self.hmac_sha256.input_data(fsm, hash_tmp, with_key=False, is_last=True)
+        for i in range(self.mac_tree_height):
+            begin_state = fsm.current
+            fsm.set_index(begin_state + 1)
                 
-            self.hmac_sha256.wait(fsm, self.hash_calc_reg)
+            # if hidx % 2:
+            hidx1 = hidx + 1
+            self.dma_read(fsm, self.mac_ram, i, self.root_addr + hidx1 * HASH_BYTE_SIZE, 1)
+            hash_tmp = self.mac_ram.read(fsm, i)
+            self.hmac_sha256.input_data(fsm, _implement0(self.hash_calc_reg), with_key=False, is_last=False)
+            self.hmac_sha256.input_data(fsm, _implement0(hash_tmp), with_key=False, is_last=True)
             
+            end_true_state = fsm.current
+            fsm.set_index(end_true_state + 1)
+            
+            # else:
+            hidx2 = hidx - 1
+            self.dma_read(fsm, self.mac_ram, i, self.root_addr + hidx2 * HASH_BYTE_SIZE, 1)
+            hash_tmp = self.mac_ram.read(fsm, i)
+            self.hmac_sha256.input_data(fsm, _implement0(hash_tmp), with_key=False, is_last=False)
+            self.hmac_sha256.input_data(fsm, _implement0(self.hash_calc_reg), with_key=False, is_last=True)
+            
+            end_false_state = fsm.current
+            fsm.set_index(end_false_state + 1)
+            
+            fsm.If(hidx % 2 == 1).goto_from(begin_state, begin_state + 1)
+            fsm.goto_from(end_true_state, end_false_state + 1)
+            fsm.If(Not(hidx % 2 == 1)).goto_from(begin_state, end_true_state + 1)
+            fsm.goto_from(end_false_state, end_false_state + 1)
+            
+            self.hmac_sha256.wait(fsm, self.hash_calc_reg)
             hidx = (hidx - 1) // 2
         
         # mac verification
-        fsm.If(not equals(self.hash_calc_reg.value, self.root.value))(
+        fsm.If(self.hash_calc_reg != self.root)(
             self.is_secure(0)
         )
         fsm.goto_next()
         
-    def _update(self, fsm: FSM, ram: RAM, begin_data_addr, local_addr, idx):
-        data = ram.read(fsm, local_addr + idx)
+    def _update(self, fsm: FSM, ram: RAM, begin_data_addr, local_addr, begin_data_idx, idx):
         self.dma_write(fsm, ram, local_addr + idx, begin_data_addr + idx * DATA_BLOCK_BYTE_SIZE, 1)
-        self.hmac_sha256.input_data(fsm, data, with_key=True, is_last=True)
+        data = ram.read(fsm, local_addr + idx)
+        self.hmac_sha256.input_data(fsm, _implement0(data), with_key=True, is_last=True)
         self.hmac_sha256.wait(fsm, self.hash_calc_reg)
         self.calc_mac_ram.write(fsm, 0, self.hash_calc_reg)
-        hidx = self.mac_begin_idx + idx
+        hidx = self.mac_begin_idx + begin_data_idx + idx
         self.dma_write(fsm, self.calc_mac_ram, 0, self.root_addr + hidx * HASH_BYTE_SIZE, 1)
         
-        # hidxが正しいか見てみる
-        for i in range(self.mac_tree_height):
-            if hidx % 2 == 0:
-                hidx -= 1
-            else:
-                hidx += 1
-            
+        for i in range(self.mac_tree_height):            
             hash_tmp = self.mac_ram.read(fsm, i)
             
-            if hidx % 2 == 0:
-                self.hmac_sha256.input_data(fsm, hash_tmp, with_key=False, is_last=True)
-                self.hmac_sha256.input_data(fsm, self.hash_calc_reg, with_key=False, is_last=False)
-            else:
-                self.hmac_sha256.input_data(fsm, self.hash_calc_reg, with_key=False, is_last=False)
-                self.hmac_sha256.input_data(fsm, hash_tmp, with_key=False, is_last=True)
+            begin_state = fsm.current
+            fsm.set_index(begin_state + 1)
+            
+            # if hidx % 2:
+            self.hmac_sha256.input_data(fsm, _implement0(self.hash_calc_reg), with_key=False, is_last=False)
+            self.hmac_sha256.input_data(fsm, _implement0(hash_tmp), with_key=False, is_last=True)
+            
+            end_true_state = fsm.current
+            fsm.set_index(end_true_state + 1)
+            
+            # else:
+            self.hmac_sha256.input_data(fsm, _implement0(hash_tmp), with_key=False, is_last=False)
+            self.hmac_sha256.input_data(fsm, _implement0(self.hash_calc_reg), with_key=False, is_last=True)
+            
+            end_false_state = fsm.current
+            fsm.If(hidx % 2).goto_from(begin_state, begin_state + 1)
+            fsm.goto_from(end_true_state, end_false_state + 1)
+            fsm.If(Not(hidx % 2)).goto_from(begin_state, end_true_state + 1)
+            fsm.goto_from(end_false_state, end_false_state + 1)
+            fsm.set_index(end_false_state + 1)
             
             self.hmac_sha256.wait(fsm, self.hash_calc_reg)
             self.calc_mac_ram.write(fsm, 0, self.hash_calc_reg)
@@ -212,13 +232,14 @@ class AXIMSecure(AXIM):
         
 
     def init(self, fsm: FSM):
-        # 全データからハッシュを計算して、ハッシュツリーを作成する
+        # 全データからハッシュを計算して保存する
         for i in range(2 ** self.mac_tree_height):
             self.dma_read(fsm, self.data_ram, 0, i * DATA_BLOCK_BYTE_SIZE, 1)
             data = self.data_ram.read(fsm, 0)
-            self.hmac_sha256.input_data(fsm, data, with_key=True, is_last=True)
+            self.hmac_sha256.input_data(fsm, _implement0(data), with_key=True, is_last=True)
             self.hmac_sha256.wait(fsm, self.hash_calc_reg)
-            self.dma_write(fsm, self.mac_ram, 0, self.root_addr + i * HASH_BYTE_SIZE, 1)
+            self.mac_ram.write(fsm, 0, self.hash_calc_reg)
+            self.dma_write(fsm, self.mac_ram, 0, self.mac_begin_addr + (self.mac_begin_idx + i) * HASH_BYTE_SIZE, 1)
         
         # ハッシュツリーの更新
         for i in range(self.mac_tree_height, 0, -1):
@@ -228,8 +249,8 @@ class AXIMSecure(AXIM):
                 hash0 = self.mac_ram.read(fsm, 0)
                 self.dma_read(fsm, self.mac_ram, 1, self.root_addr + (hidx + 1) * HASH_BYTE_SIZE, 1)
                 hash1 = self.mac_ram.read(fsm, 1)
-                self.hmac_sha256.input_data(fsm, hash0, with_key=False, is_last=False)
-                self.hmac_sha256.input_data(fsm, hash1, with_key=False, is_last=True)
+                self.hmac_sha256.input_data(fsm, _implement0(hash0), with_key=False, is_last=False)
+                self.hmac_sha256.input_data(fsm, _implement0(hash1), with_key=False, is_last=True)
                 self.hmac_sha256.wait(fsm, self.hash_calc_reg)
                 self.mac_ram.write(fsm, 0, self.hash_calc_reg)
                 self.dma_write(fsm, self.mac_ram, 0, self.root_addr + (hidx // 2) * HASH_BYTE_SIZE, 1)
@@ -265,6 +286,17 @@ def _calc_nodes_from_height(h):
         return 0
     return (SEP ** (h + 1) - 1) // (SEP - 1)
 
+def _calc_mac_ram_size(height):
+    if height <= 0:
+        return 1
+    return int(math.log2(height)) + 1
+
+def _next_power_of_2(x):
+    return 2 ** (x - 1).bit_length()
+
+def _implement0(data):
+    return data & ((1 << HASH_BIT_SIZE) - 1)
+
 def _implement_data(data, data_width, impl_data, impl_data_width, begin_bit):
     if (data_width - begin_bit) < impl_data_width:
         raise ValueError("impl_data_width is too large")
@@ -276,3 +308,4 @@ def _implement_data(data, data_width, impl_data, impl_data_width, begin_bit):
     data = data & ~mask | impl_data
     
     return data
+

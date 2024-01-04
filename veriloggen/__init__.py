@@ -56,6 +56,7 @@ from .types import reset as types_reset
 
 # Security Modules
 from .security.hmac_sha256 import HmacSha256
+from .security.hmac_sha256_debug import HmacSha256Debug
 
 
 def reset():
