@@ -12,12 +12,13 @@ from veriloggen import *
 import veriloggen.thread as vthread
 import veriloggen.types.axi as axi
 
-axi_datawidth = 512
-datawidth = 32
+axi_datawidth = 256
+datawidth = 256
+databyte = datawidth // 8
 
-num = 32
+num = 3
 
-a_offset = 0
+a_addr = 0
 
 def mkLed():
     m = Module('blinkled')
@@ -26,25 +27,40 @@ def mkLed():
 
     addrwidth = 4
     ram_a = vthread.RAM(m, 'ram_a', clk, rst, datawidth, addrwidth)
+    ram_b = vthread.RAM(m, 'ram_b', clk, rst, datawidth, addrwidth)
 
-    maxi = vthread.AXIMSecure(m, 'maxi', clk, rst, datawidth, global_max_addr= (num + 1)* 4 - 1 ) 
+    maxi = vthread.AXIMSecure(m, 'maxi', clk, rst, datawidth, global_max_addr=databyte * num - 1, max_ram_byte_size=databyte * num, sk=0x597208cf39e5664c) 
 
     def count():
-        a_addr = a_offset
-        for i in range(num):
-            ram_a.write(i, i)
-            maxi.dma_write_secure(ram_a, i, a_addr, 1)
-            a_addr += 4
-
-        a_addr = a_offset
-        sum = 0
-        for i in range(num):
-            maxi.dma_read_secure(ram_a, i, a_addr, 1)
-            sum = sum + ram_a.read(i)
-            a_addr += 4
+        maxi.init()
         
-        ram_a.write(0, sum)
-        maxi.dma_write_secure(ram_a, 0, num * 4, 1)
+        ram_a.write(0, 16)
+        maxi.dma_write_secure(ram_a, 0, 0, 1)
+        
+        ram_a.write(1, 32)
+        maxi.dma_write_secure(ram_a, 1, 32, 1)
+        
+        ram_a.write(2, 64)
+        maxi.dma_write_secure(ram_a, 2, 64, 1)
+        
+        sum = 0
+        maxi.dma_read_secure(ram_b, 0, 0, 1)
+        sum += ram_b.read(0)
+        maxi.dma_read_secure(ram_b, 1, 32, 1)
+        sum += ram_b.read(1)
+        maxi.dma_read_secure(ram_b, 2, 64, 1)
+        sum += ram_b.read(2)
+        
+        ram_b.write(0, sum)
+        maxi.dma_write_secure(ram_b, 0, 0, 1)
+        
+        # attack
+        ram_b.write(0, 0)
+        maxi.dma_write(ram_b, 0, 0, 1)
+        
+        # integrity verification (is_secure = False)
+        maxi.dma_read_secure(ram_b, 0, 0, 1)
+        
 
     th = vthread.Thread(m, 'th_count', clk, rst, count)
     fsm = th.start()
@@ -62,8 +78,8 @@ def mkTest():
     clk = ports['CLK']
     rst = ports['RST']
 
-    memory = axi.AxiMemoryModel(m, 'memory', clk, rst,
-                                mem_datawidth=axi_datawidth)
+    memory = axi.AxiMemoryModel(m, 'memory', clk, rst, datawidth=datawidth,
+                                mem_datawidth=axi_datawidth, memimg_name="mem_start.out")
 
     memory.connect(ports, 'maxi')
 
