@@ -175,9 +175,9 @@ class AXIMSecure(AXIM):
             end_false_state = fsm.current
             fsm.set_index(end_false_state + 1)
             
-            fsm.If(hidx % 2 == 1).goto_from(begin_state, begin_state + 1)
+            fsm.If(hidx & 0x1).goto_from(begin_state, begin_state + 1)
             fsm.goto_from(end_true_state, end_false_state + 1)
-            fsm.If(Not(hidx % 2 == 1)).goto_from(begin_state, end_true_state + 1)
+            fsm.If(Not(hidx & 0x1)).goto_from(begin_state, end_true_state + 1)
             fsm.goto_from(end_false_state, end_false_state + 1)
             
             self.hmac_sha256.wait(fsm, self.hash_calc_reg)
@@ -216,9 +216,9 @@ class AXIMSecure(AXIM):
             self.hmac_sha256.input_data(fsm, _implement0(self.hash_calc_reg), with_key=False, is_last=True)
             
             end_false_state = fsm.current
-            fsm.If(hidx % 2).goto_from(begin_state, begin_state + 1)
+            fsm.If(hidx & 0x1).goto_from(begin_state, begin_state + 1)
             fsm.goto_from(end_true_state, end_false_state + 1)
-            fsm.If(Not(hidx % 2)).goto_from(begin_state, end_true_state + 1)
+            fsm.If(Not(hidx & 0x1)).goto_from(begin_state, end_true_state + 1)
             fsm.goto_from(end_false_state, end_false_state + 1)
             fsm.set_index(end_false_state + 1)
             
@@ -295,7 +295,7 @@ def _next_power_of_2(x):
     return 2 ** (x - 1).bit_length()
 
 def _implement0(data):
-    return data & ((1 << HASH_BIT_SIZE) - 1)
+    return data & Int((1 << HASH_BIT_SIZE) - 1, HASH_BIT_SIZE * 2, 16)
 
 def _implement_data(data, data_width, impl_data, impl_data_width, begin_bit):
     if (data_width - begin_bit) < impl_data_width:

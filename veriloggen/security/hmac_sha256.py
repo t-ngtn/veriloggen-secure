@@ -3,6 +3,7 @@ from __future__ import print_function
 import os
 import sys
 
+from veriloggen import *
 from veriloggen.core.module import Module, StubModule
 from veriloggen.fsm.fsm import FSM
 
@@ -65,7 +66,7 @@ class HmacSha256(object):
             fsm(
                 self.s_tvalid_i(1),
                 self.s_tlast_i(0),
-                self.s_tdata_i(self.sk),
+                self.s_tdata_i(Int(self.sk, 128, 16)),
             )
             fsm.goto_next(self.s_tvalid_i & self.s_tready_o)
 

@@ -20,8 +20,8 @@ num = 3
 
 a_addr = 0
 
-def mkLed():
-    m = Module('blinkled')
+def mkIntegrityCheck():
+    m = Module('integrity_check')
     clk = m.Input('CLK')
     rst = m.Input('RST')
 
@@ -70,7 +70,7 @@ def mkLed():
 
 def mkTest():
 
-    led = mkLed()
+    led = mkIntegrityCheck()
 
     m = Module('test')
     params = m.copy_params(led)
