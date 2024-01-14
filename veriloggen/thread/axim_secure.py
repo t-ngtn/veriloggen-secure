@@ -146,7 +146,7 @@ class AXIMSecure(AXIM):
     
     def _verify_one_block(self, fsm: FSM, begin_data_idx, idx):
         data = self.tmp_ram.read(fsm, idx)
-        self.hmac_sha256.input_data(fsm, _implement0(data), with_key=True, is_last=True)
+        self.hmac_sha256.input_one_data(fsm, _implement0(data))
         self.hmac_sha256.wait(fsm, self.hash_calc_reg)
         
         hidx = self.mac_begin_idx + begin_data_idx + idx
@@ -159,8 +159,9 @@ class AXIMSecure(AXIM):
             hidx1 = hidx + 1
             self.dma_read(fsm, self.mac_ram, i, self.root_addr + hidx1 * HASH_BYTE_SIZE, 1)
             hash_tmp = self.mac_ram.read(fsm, i)
-            self.hmac_sha256.input_data(fsm, _implement0(self.hash_calc_reg), with_key=False, is_last=False)
-            self.hmac_sha256.input_data(fsm, _implement0(hash_tmp), with_key=False, is_last=True)
+            self.hmac_sha256.input_two_data(fsm, _implement0(self.hash_calc_reg), _implement0(hash_tmp))
+            # self.hmac_sha256.input_data(fsm, _implement0(self.hash_calc_reg), with_key=False, is_last=False)
+            # self.hmac_sha256.input_data(fsm, _implement0(hash_tmp), with_key=False, is_last=True)
             
             end_true_state = fsm.current
             fsm.set_index(end_true_state + 1)
@@ -169,8 +170,9 @@ class AXIMSecure(AXIM):
             hidx2 = hidx - 1
             self.dma_read(fsm, self.mac_ram, i, self.root_addr + hidx2 * HASH_BYTE_SIZE, 1)
             hash_tmp = self.mac_ram.read(fsm, i)
-            self.hmac_sha256.input_data(fsm, _implement0(hash_tmp), with_key=False, is_last=False)
-            self.hmac_sha256.input_data(fsm, _implement0(self.hash_calc_reg), with_key=False, is_last=True)
+            self.hmac_sha256.input_two_data(fsm, _implement0(hash_tmp), _implement0(self.hash_calc_reg))
+            # self.hmac_sha256.input_data(fsm, _implement0(hash_tmp), with_key=False, is_last=False)
+            # self.hmac_sha256.input_data(fsm, _implement0(self.hash_calc_reg), with_key=False, is_last=True)
             
             end_false_state = fsm.current
             fsm.set_index(end_false_state + 1)
@@ -192,7 +194,8 @@ class AXIMSecure(AXIM):
     def _update(self, fsm: FSM, ram: RAM, begin_data_addr, local_addr, begin_data_idx, idx):
         self.dma_write(fsm, ram, local_addr + idx, begin_data_addr + idx * DATA_BLOCK_BYTE_SIZE, 1)
         data = ram.read(fsm, local_addr + idx)
-        self.hmac_sha256.input_data(fsm, _implement0(data), with_key=True, is_last=True)
+        self.hmac_sha256.input_one_data(fsm, _implement0(data))
+        # self.hmac_sha256.input_data(fsm, _implement0(data), with_key=True, is_last=True)
         self.hmac_sha256.wait(fsm, self.hash_calc_reg)
         self.calc_mac_ram.write(fsm, 0, self.hash_calc_reg)
         hidx = self.mac_begin_idx + begin_data_idx + idx
@@ -205,15 +208,17 @@ class AXIMSecure(AXIM):
             fsm.set_index(begin_state + 1)
             
             # if hidx % 2:
-            self.hmac_sha256.input_data(fsm, _implement0(self.hash_calc_reg), with_key=False, is_last=False)
-            self.hmac_sha256.input_data(fsm, _implement0(hash_tmp), with_key=False, is_last=True)
+            self.hmac_sha256.input_two_data(fsm, _implement0(self.hash_calc_reg), _implement0(hash_tmp))
+            # self.hmac_sha256.input_data(fsm, _implement0(self.hash_calc_reg), with_key=False, is_last=False)
+            # self.hmac_sha256.input_data(fsm, _implement0(hash_tmp), with_key=False, is_last=True)
             
             end_true_state = fsm.current
             fsm.set_index(end_true_state + 1)
             
             # else:
-            self.hmac_sha256.input_data(fsm, _implement0(hash_tmp), with_key=False, is_last=False)
-            self.hmac_sha256.input_data(fsm, _implement0(self.hash_calc_reg), with_key=False, is_last=True)
+            self.hmac_sha256.input_two_data(fsm, _implement0(hash_tmp), _implement0(self.hash_calc_reg))
+            # self.hmac_sha256.input_data(fsm, _implement0(hash_tmp), with_key=False, is_last=False)
+            # self.hmac_sha256.input_data(fsm, _implement0(self.hash_calc_reg), with_key=False, is_last=True)
             
             end_false_state = fsm.current
             fsm.If(hidx & 0x1).goto_from(begin_state, begin_state + 1)
@@ -236,7 +241,8 @@ class AXIMSecure(AXIM):
         for i in range(2 ** self.mac_tree_height):
             self.dma_read(fsm, self.data_ram, 0, i * DATA_BLOCK_BYTE_SIZE, 1)
             data = self.data_ram.read(fsm, 0)
-            self.hmac_sha256.input_data(fsm, _implement0(data), with_key=True, is_last=True)
+            self.hmac_sha256.input_one_data(fsm, _implement0(data))
+            # self.hmac_sha256.input_data(fsm, _implement0(data), with_key=True, is_last=True)
             self.hmac_sha256.wait(fsm, self.hash_calc_reg)
             self.mac_ram.write(fsm, 0, self.hash_calc_reg)
             self.dma_write(fsm, self.mac_ram, 0, self.mac_begin_addr + (self.mac_begin_idx + i) * HASH_BYTE_SIZE, 1)
@@ -249,8 +255,9 @@ class AXIMSecure(AXIM):
                 hash0 = self.mac_ram.read(fsm, 0)
                 self.dma_read(fsm, self.mac_ram, 1, self.root_addr + (hidx + 1) * HASH_BYTE_SIZE, 1)
                 hash1 = self.mac_ram.read(fsm, 1)
-                self.hmac_sha256.input_data(fsm, _implement0(hash0), with_key=False, is_last=False)
-                self.hmac_sha256.input_data(fsm, _implement0(hash1), with_key=False, is_last=True)
+                self.hmac_sha256.input_two_data(fsm, _implement0(hash0), _implement0(hash1))
+                # self.hmac_sha256.input_data(fsm, _implement0(hash0), with_key=False, is_last=False)
+                # self.hmac_sha256.input_data(fsm, _implement0(hash1), with_key=False, is_last=True)
                 self.hmac_sha256.wait(fsm, self.hash_calc_reg)
                 self.mac_ram.write(fsm, 0, self.hash_calc_reg)
                 self.dma_write(fsm, self.mac_ram, 0, self.root_addr + (hidx // 2) * HASH_BYTE_SIZE, 1)

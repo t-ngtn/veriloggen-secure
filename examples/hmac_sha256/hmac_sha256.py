@@ -10,7 +10,7 @@ from veriloggen import *
 import veriloggen.thread as vthread
 
 INPUT_VALUE = 1000
-
+SECRET_KEY = 0
 
 def mkHmacSha256():
     m = Module('hmac_sha256')
@@ -18,12 +18,12 @@ def mkHmacSha256():
     clk = m.Input('CLK')
     rst = m.Input('RST')
     
-    hmac_sha256 = HmacSha256(m, "hmac_sha256", clk, rst)
+    hmac_sha256 = HmacSha256(m, "hmac_sha256", clk, rst, SECRET_KEY)
     
     digest = m.Reg('digest', 256)
     
     def hash():
-        hmac_sha256.input_data(data=INPUT_VALUE, with_key=True, is_last=True)
+        hmac_sha256.input_one_data(data=INPUT_VALUE)
         hmac_sha256.wait(digest=digest)
     
     
