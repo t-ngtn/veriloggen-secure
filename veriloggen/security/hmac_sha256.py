@@ -130,7 +130,7 @@ class HmacSha256(object):
         
         fsm(
             self.s_tvalid_i(1),
-            self.s_tlast_i(0),
+            self.s_tlast_i(1),
             self.s_tdata_i(data2),    
         )
         fsm.goto_next(self.s_tvalid_i & self.s_tready_o)
