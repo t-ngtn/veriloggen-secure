@@ -33,16 +33,16 @@ def mkIntegrityCheck():
 
     def count():
         maxi.init()
-        
+
         ram_a.write(0, 16)
         maxi.dma_write_secure(ram_a, 0, 0, 1)
-        
+
         ram_a.write(1, 32)
         maxi.dma_write_secure(ram_a, 1, 32, 1)
-        
+
         ram_a.write(2, 64)
         maxi.dma_write_secure(ram_a, 2, 64, 1)
-        
+
         sum = 0
         maxi.dma_read_secure(ram_b, 0, 0, 1)
         sum += ram_b.read(0)
@@ -50,17 +50,17 @@ def mkIntegrityCheck():
         sum += ram_b.read(1)
         maxi.dma_read_secure(ram_b, 2, 64, 1)
         sum += ram_b.read(2)
-        
+
         ram_b.write(0, sum)
         maxi.dma_write_secure(ram_b, 0, 0, 1)
-        
+
         # attack
         ram_b.write(0, 0)
         maxi.dma_write(ram_b, 0, 0, 1)
-        
+
         # integrity verification (is_secure = False)
         maxi.dma_read_secure(ram_b, 0, 0, 1)
-        
+
 
     th = vthread.Thread(m, 'th_count', clk, rst, count)
     fsm = th.start()
@@ -91,7 +91,7 @@ def mkTest():
     simulation.setup_waveform(m, uut, dumpfile=vcd_name)
     simulation.setup_clock(m, clk, hperiod=5)
     init = simulation.setup_reset(m, rst, m.make_reset(), period=100)
-    
+
     init.add(
         Delay(1000000),
         Systask('writememh', os.path.splitext(os.path.basename(__file__))[0] + '_memory.out', memory.mem),

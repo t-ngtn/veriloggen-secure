@@ -22,21 +22,21 @@ for file_name in file_names:
     file_path = os.path.join(script_dir, file_name)
     with open(file_path, "r") as f:
         sha256_combined_v += f.read() + "\n\n"
-        
+
 IPAD = 0x36363636363636363636363636363636
 OPAD = 0x5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c
 
 class HmacSha256(object):
-    
+
     __intrinsics__ = ('input_one_data', 'input_two_data', 'wait')
-    
+
     def __init__(self, m: Module, name, clk, rst, sk):
         self.m = m
         self.name = name
         self.clk = clk
         self.rst = rst
         self.sk = sk
-        
+
         self.s_tdata_i = self.m.Reg('s_tdata_i', 512)
         self.s_tlast_i = self.m.Reg('s_tlast_i')
         self.s_tvalid_i = self.m.Reg('s_tvalid_i')
@@ -44,7 +44,7 @@ class HmacSha256(object):
         self.digest_o = self.m.Wire('digest_o', 256)
         self.digest_valid_o = self.m.Wire('digest_valid_o')
         self.mode = self.m.Wire('mode', width=1, value=1)
-        
+
         self.mac = self.m.Reg('mac', 256)
         self.ik = Int(self.sk, 128, 16) ^ Int(IPAD, 128, 16)
         self.ok = Int(self.sk, 128, 16) ^ Int(OPAD, 128, 16)
@@ -62,7 +62,7 @@ class HmacSha256(object):
         ]
         sha256_stream = StubModule('sha256_stream', sha256_combined_v)
         self.m.Instance(sha256_stream, 'sha256_stream', [], ports=ports)
-    
+
     def input_one_data(self, fsm: FSM, data):
         '''
         input:
@@ -79,41 +79,41 @@ class HmacSha256(object):
         fsm(
             self.s_tvalid_i(1),
             self.s_tlast_i(1),
-            self.s_tdata_i(data),    
+            self.s_tdata_i(data),
         )
         fsm.goto_next(self.s_tvalid_i & self.s_tready_o)
-            
+
         fsm(
             self.s_tvalid_i(0),
         )
         fsm.goto_next()
-        
+
         fsm.If(self.digest_valid_o)(
             self.mac(self.digest_o),
         )
         fsm.goto_next(self.digest_valid_o)
-        
+
         fsm(
             self.s_tvalid_i(1),
             self.s_tlast_i(0),
             self.s_tdata_i(self.ok),
         )
         fsm.goto_next(self.s_tvalid_i & self.s_tready_o)
-        
+
         fsm(
             self.s_tvalid_i(1),
             self.s_tlast_i(1),
             self.s_tdata_i(self.mac),
         )
         fsm.goto_next(self.s_tvalid_i & self.s_tready_o)
-    
+
     def input_two_data(self, fsm: FSM, data1, data2):
         '''
         input: 
             data1: 512 bits
             data2: 512 bits
         '''
-        
+
         fsm(
             self.s_tvalid_i(1),
             self.s_tlast_i(0),
@@ -124,49 +124,44 @@ class HmacSha256(object):
         fsm(
             self.s_tvalid_i(1),
             self.s_tlast_i(0),
-            self.s_tdata_i(data1),    
+            self.s_tdata_i(data1),
         )
         fsm.goto_next(self.s_tvalid_i & self.s_tready_o)
-        
+
         fsm(
             self.s_tvalid_i(1),
             self.s_tlast_i(1),
-            self.s_tdata_i(data2),    
+            self.s_tdata_i(data2),
         )
         fsm.goto_next(self.s_tvalid_i & self.s_tready_o)
-            
+
         fsm(
             self.s_tvalid_i(0),
         )
         fsm.goto_next()
-        
+
         fsm.If(self.digest_valid_o)(
             self.mac(self.digest_o),
         )
         fsm.goto_next(self.digest_valid_o)
-        
+
         fsm(
             self.s_tvalid_i(1),
             self.s_tlast_i(0),
             self.s_tdata_i(self.ok),
         )
         fsm.goto_next(self.s_tvalid_i & self.s_tready_o)
-        
+
         fsm(
             self.s_tvalid_i(1),
             self.s_tlast_i(1),
             self.s_tdata_i(self.mac),
         )
         fsm.goto_next(self.s_tvalid_i & self.s_tready_o)
-        
-        
+
+
     def wait(self, fsm: FSM, digest):
         fsm.If(self.digest_valid_o)(
             digest(self.digest_o),
         )
         fsm.goto_next(self.digest_valid_o)
-        
-        
-        
-        
-    

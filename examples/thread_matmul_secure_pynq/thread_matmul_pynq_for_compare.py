@@ -45,14 +45,14 @@ def mkMatmul():
             initiate(matrix_size, a_offset, b_offset, c_offset)
 
             saxi.write(1, 0)  # unset busy
-            
+
             saxi.wait_flag(0, value=1, resetvalue=0)
             saxi.write(1, 1)  # set busy
 
             comp(matrix_size, a_offset, b_offset, c_offset)
 
             saxi.write(1, 0)  # unset busy
-    
+
     def initiate(matrix_size, a_offset, b_offset, c_offset):
         a_addr, b_addr = a_offset, b_offset
         value = 1
@@ -101,9 +101,9 @@ def mkMatmul():
 def run(filename='tmp.v', simtype='iverilog', outputfile=None):
 
     mod = mkMatmul()
-    
+
     code = mod.to_verilog(filename)
-    
+
     return code
 
 

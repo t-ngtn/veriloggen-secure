@@ -17,16 +17,16 @@ def mkHmacSha256():
 
     clk = m.Input('CLK')
     rst = m.Input('RST')
-    
+
     hmac_sha256 = HmacSha256(m, "hmac_sha256", clk, rst, SECRET_KEY)
-    
+
     digest = m.Reg('digest', 256)
-    
+
     def hash():
         hmac_sha256.input_one_data(data=INPUT_VALUE)
         hmac_sha256.wait(digest=digest)
-    
-    
+
+
     th = vthread.Thread(m, 'th_hash', clk, rst, hash)
     fsm = th.start()
 
