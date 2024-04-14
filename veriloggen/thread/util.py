@@ -23,7 +23,7 @@ def copy(fsm, src_ram, dst_ram, src_addr, dst_addr, size,
         clk = src_ram.clk
         rst = src_ram.rst
         strm = stream.Stream(m, name, clk, rst)
-        src = strm.source('src')
+        src = strm.source('src', datawidth=src_ram.datawidth)
         dst = src
         strm.sink(dst, 'dst')
         copy_stream_cache[name] = strm
@@ -50,7 +50,7 @@ def copy_pattern(fsm, src_ram, dst_ram, src_addr, dst_addr,
         clk = src_ram.clk
         rst = src_ram.rst
         strm = stream.Stream(m, name, clk, rst)
-        src = strm.source('src')
+        src = strm.source('src', datawidth=src_ram.datawidth)
         dst = src
         strm.sink(dst, 'dst')
         copy_pattern_stream_cache[name] = strm
